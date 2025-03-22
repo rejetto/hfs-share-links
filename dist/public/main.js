@@ -1,9 +1,11 @@
 'use strict';{
     const { h, t, _ } = HFS
+
     let data
-    HFS.watchState('username', async () => {
+    async function reload() {
         data = await HFS.customRestCall('get_links')
-    }, true)
+    }
+    HFS.watchState('username', reload, true)
 
     HFS.onEvent('additionalEntryDetails', ({ entry }) =>
         _.find(data?.list, { uri: entry.uri }) && HFS.hIcon('link', { title: t('Share-link') }))
@@ -34,6 +36,7 @@
                                 }).then(res => {
                                     close()
                                     copy(res.baseUrl, res.token)
+                                    reload()
                                 }, HFS.dialogLib.alertDialog)
                             },
                         },
@@ -53,9 +56,11 @@
                         list.length > 0 && h('div', { style: { marginTop: '2em', display: 'flex', flexDirection: 'column', gap: '.5em' } },
                             t("Existing links on this file"),
                             list.map((x, i) => h('div', { key: i },
-                                HFS.iconBtn('delete', () =>
-                                    HFS.customRestCall('del_link', { token: x.token })
-                                        .then(() => setList(list.filter((_, j) => j !== i)))),
+                                HFS.iconBtn('delete', async () => {
+                                    await HFS.customRestCall('del_link', { token: x.token })
+                                    setList(list.filter((_, j) => j !== i))
+                                    reload()
+                                }),
                                 h('button', { onClick() { close(); copy(data.baseUrl, x.token) } },
                                     HFS.hIcon('copy'), ' ' + t("Copy") + ' - ',
                                     ...x.expiration ? [t("Expires:"), ' ', HFS.misc.formatTimestamp(x.expiration)]

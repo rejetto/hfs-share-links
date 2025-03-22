@@ -1,6 +1,6 @@
 exports.description = "Create links to download a file without login"
-exports.version = 9
-exports.apiRequired = 12.1 // fix on ctx.stop()
+exports.version = 1
+exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.config = {
@@ -17,16 +17,18 @@ exports.config = {
         fields: values => ({
             uri: { $width: 1.5, label: "URI", type: 'vfs_path', $mergeRender: { expiration: {} } },
             token: { required: true, $hideUnder: true },
-            expiration: { type: 'date_time', label: "Expiration date", sm: 5, $hideUnder: 'sm', $width: 1,
-                $render({ value, row }) { return value ? new Date(value).toLocaleString() : `Expires in ${row.days} day(s) after first access` }
+            expiration: { type: 'date_time', label: "Expiration date", $hideUnder: 'sm', $width: 1,
+                $render: ({ value, row }) => value ? new Date(value).toLocaleString() : `Expires in ${row.days} day(s) after first access`
             },
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 3 },
             daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 4 },
+            by: { $hideUnder: 900, disabled: true, placeholder: "none", xs: 6, $mergeRender: { creation: {} } },
+            creation: { $hideUnder: true, disabled: true, placeholder: "unknown", type: (!values || values.creation) && 'date_time', xs: 6 }, // no type to show placeholder (values is false for table, not form)
         })
     },
 }
 exports.configDialog = {
-    maxWidth: '50em'
+    maxWidth: 1000
 }
 
 exports.init = api => {
@@ -48,7 +50,7 @@ exports.init = api => {
             async link(values, ctx) {
                 limitAccess(ctx)
                 const token = api.misc.randomId(25) // 128 bits of randomness
-                api.setConfig('links', [...links, { token, ...values }])
+                api.setConfig('links', [...links, { token, by: api.getCurrentUsername(ctx), creation: new Date, ...values }])
                 return { token, baseUrl: await getBaseUrlOrDefault() }
             },
             async get_links(filter, ctx) {
