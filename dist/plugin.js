@@ -3,6 +3,7 @@ exports.version = 1
 exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
+exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.config = {
     onlyFor: {
         type: 'username',
