@@ -3,17 +3,17 @@
 
     let data
     async function reload() {
-        data = await HFS.customRestCall('get_links')
+        data = HFS.customRestCall('get_links')
     }
     HFS.watchState('username', reload, true)
 
-    HFS.onEvent('additionalEntryDetails', ({ entry }) =>
-        _.find(data?.list, { uri: entry.uri }) && HFS.hIcon('link', { title: t('Share-link') }))
+    HFS.onEvent('additionalEntryDetails', async ({ entry }) =>
+        _.find((await data).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t('Share-link') }))
 
-    HFS.onEvent('fileMenu', ({ entry }) =>
-        data && !entry.isFolder
+    HFS.onEvent('fileMenu', async ({ entry }) =>
+        await data && !entry.isFolder
         && [{ id: 'share-link', icon: 'link', label: t("Share-link"), async onClick() {
-            const ofThisFile = _.filter(data.list, { uri: entry.uri })
+            const ofThisFile = _.filter((await data).list, { uri: entry.uri })
             const { close } = await HFS.dialogLib.newDialog({
                 title: t("Share-link"),
                 Content() {

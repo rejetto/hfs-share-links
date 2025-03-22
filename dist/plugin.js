@@ -1,5 +1,5 @@
 exports.description = "Create links to download a file without login"
-exports.version = 1
+exports.version = 1.11
 exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
@@ -22,9 +22,10 @@ exports.config = {
                 $render: ({ value, row }) => value ? new Date(value).toLocaleString() : `Expires in ${row.days} day(s) after first access`
             },
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 3 },
-            daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 4 },
-            by: { $hideUnder: 900, disabled: true, placeholder: "none", xs: 6, $mergeRender: { creation: {} } },
-            creation: { $hideUnder: true, disabled: true, placeholder: "unknown", type: (!values || values.creation) && 'date_time', xs: 6 }, // no type to show placeholder (values is false for table, not form)
+            daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 9 },
+            creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, $mergeRender: { by: {} },
+                type: (!values || values.creation) && 'date_time', }, // no type to show placeholder (values is false for table, not form)
+            by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, $render: ({ value }) => value && ("by " + value) },
         })
     },
 }
