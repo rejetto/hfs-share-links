@@ -2,7 +2,7 @@
 
 HFS plugin to create links to download a file without login
 
-Access the menu of any file, and then click "share-links". You'll see something like this:
+Access the menu of any file, and then click "share-link". You'll see something like this:
 
 <img width="278" alt="image" src="https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7" />
 

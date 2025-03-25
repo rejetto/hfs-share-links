@@ -8,7 +8,7 @@
     HFS.watchState('username', reload, true)
 
     HFS.onEvent('additionalEntryDetails', async ({ entry }) =>
-        _.find((await data).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t('Share-link') }))
+        _.find((await data).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t("Share-link") }))
 
     HFS.onEvent('fileMenu', async ({ entry }) =>
         await data && !entry.isFolder
