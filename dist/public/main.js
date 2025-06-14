@@ -49,7 +49,7 @@
                             t("Link for "), entry.uri,
                             h('div', { className: 'field' },
                             h('label', {}, t("Time to live")),
-                            h('input', { type: 'number', name: 'days', min: 0, step: 1, placeholder: t("days"), style: { width: '7em', marginLeft: '1em' } }),
+                            h('input', { type: 'number', name: 'days', min: 0, step: 1, defaultValue: 1, placeholder: t("days"), style: { width: '7em', marginLeft: '1em' } }),
                             h('input', { type: 'number', name: 'hours', min: 0, max: 23, step: 1, placeholder: t("hours"), style: { width: '7em', marginLeft: '1em' } }),
                             h('input', { type: 'number', name: 'minutes', min: 0, max: 59, step: 1, placeholder: t("minutes"), style: { width: '7em', marginLeft: '1em' } }),
                             h('input', { type: 'number', name: 'seconds', min: 0, max: 59, step: 1, placeholder: t("seconds"), style: { width: '7em', marginLeft: '1em' } }),
