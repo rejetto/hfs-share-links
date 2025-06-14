@@ -25,13 +25,19 @@
                                 ev.preventDefault()
                                 const data = new FormData(ev.target)
                                 const days = Number(data.get('days'))
+                                const hours = Number(data.get('hours') || 0)
+                                const minutes = Number(data.get('minutes') || 0)
+                                const seconds = Number(data.get('seconds') || 0)
                                 const onAccess = data.get('daysStartOnAccess')
-                                if (!onAccess && !days)
+
+                                const totalMs = (((days * 24 + hours) * 60 + minutes) * 60 + seconds) * 1000 
+
+                                if (!onAccess && totalMs === 0)
                                     return HFS.dialogLib.alertDialog(t("0 days makes sense only when the flag is enabled"), 'warning')
                                 HFS.customRestCall('link', {
                                     uri: entry.uri,
-                                    ...onAccess ? { days, daysStartOnAccess: true }
-                                        : { expiration: new Date(Date.now() + days * 86400_000) },
+                                    ...onAccess ? { days: totalMs / 86400000, daysStartOnAccess: true }
+                                                : { expiration: new Date(Date.now() + totalMs) },
 
                                 }).then(res => {
                                     close()
@@ -42,11 +48,13 @@
                         },
                             t("Link for "), entry.uri,
                             h('div', { className: 'field' },
-                                h('label', {}, t("Days to live")),
-                                h('input', { type: 'number', name: 'days', min: 0, step: .01, defaultValue: 1,
-                                    style: { width: '5em', marginLeft: '1em' }
-                                }),
+                            h('label', {}, t("Time to live")),
+                            h('input', { type: 'number', name: 'days', min: 0, step: 1, defaultValue: 1, placeholder: t("days"), style: { width: '7em', marginLeft: '1em' } }),
+                            h('input', { type: 'number', name: 'hours', min: 0, max: 23, step: 1, placeholder: t("hours"), style: { width: '7em', marginLeft: '1em' } }),
+                            h('input', { type: 'number', name: 'minutes', min: 0, max: 59, step: 1, placeholder: t("minutes"), style: { width: '7em', marginLeft: '1em' } }),
+                            h('input', { type: 'number', name: 'seconds', min: 0, max: 59, step: 1, placeholder: t("seconds"), style: { width: '7em', marginLeft: '1em' } }),
                             ),
+
                             h('label', { className: 'field' },
                                 h('input', { type: 'checkbox', name: 'daysStartOnAccess', value: 1 }),
                                 t("Days start on first access")
