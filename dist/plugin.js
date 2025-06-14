@@ -1,5 +1,5 @@
 exports.description = "Create links to download a file without login"
-exports.version = 1.11
+exports.version = 1.2
 exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
