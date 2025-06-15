@@ -67,6 +67,7 @@ exports.init = api => {
             async get_links(filter, ctx) {
                 try { limitAccess(ctx) }
                 catch { return false }
+                filter.by = api.getCurrentUsername(ctx)
                 return {
                     baseUrl: await getBaseUrlOrDefault(),
                     list: _.filter(links, filter)
