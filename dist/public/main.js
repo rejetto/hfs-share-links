@@ -1,19 +1,19 @@
 'use strict';{
     const { h, t, _ } = HFS
 
-    let data
+    let dataPromise
     async function reload() {
-        data = HFS.customRestCall('get_links')
+        dataPromise = HFS.customRestCall('get_links')
     }
     HFS.watchState('username', reload, true)
 
     HFS.onEvent('additionalEntryDetails', async ({ entry }) =>
-        _.find((await data).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t("Share-link") }))
+        _.find((await dataPromise).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t("Share-link") }))
 
     HFS.onEvent('fileMenu', async ({ entry }) =>
-        await data && !entry.isFolder
+        await dataPromise && !entry.isFolder
         && [{ id: 'share-link', icon: 'link', label: t("Share-link"), async onClick() {
-            const ofThisFile = _.filter((await data).list, { uri: entry.uri })
+            const ofThisFile = _.filter((await dataPromise).list, { uri: entry.uri })
             const { close } = await HFS.dialogLib.newDialog({
                 title: t("Share-link"),
                 Content() {
@@ -33,7 +33,7 @@
                                     ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
                                 }).then(res => {
                                     close()
-                                    copy(res.baseUrl, res.token)
+                                    copy(res.token)
                                     reload()
                                 }, HFS.dialogLib.alertDialog)
                             },
@@ -59,7 +59,7 @@
                                     setList(list.filter((_, j) => j !== i))
                                     reload()
                                 }),
-                                h('button', { onClick() { close(); copy(data.baseUrl, x.token) } },
+                                h('button', { onClick() { close(); copy(x.token) } },
                                     HFS.hIcon('copy'), ' ' + t("Copy") + ' - ',
                                     ...x.expiration ? [t("Expires:"), ' ', HFS.misc.formatTimestamp(x.expiration)]
                                         : [t("Days:"), ' ', x.days, ' ', x.daysStartOnAccess && t("(start on first access)")]
@@ -71,8 +71,9 @@
             })
         } }])
 
-    function copy(base, token) {
-        HFS.copyTextToClipboard(base + '/?sharelink=' + token)
+    async function copy(token) {
+        const {baseUrl} = await dataPromise
+        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + token)
         HFS.toast(t("Share-link copied"), 'success')
     }
 }
