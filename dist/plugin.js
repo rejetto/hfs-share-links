@@ -1,9 +1,12 @@
 exports.description = "Create links to download a file without login"
-exports.version = 1.11
+exports.version = 1.2
 exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
+exports.changelog = [
+    { "version": 1.2, "message": "improved security and logs" }
+]
 exports.config = {
     onlyFor: {
         type: 'username',
@@ -88,6 +91,7 @@ exports.init = api => {
             const node = await urlToNode(link.uri)
             if (!node) return
             await serveFileNode(ctx, node)
+            ctx.logExtra(null, { URI: link.uri })
             if (!link.daysStartOnAccess || link.expiration) return
             if (link.days) {
                 link.expiration = new Date(Date.now() + link.days * 86400_000)
