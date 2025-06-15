@@ -35,12 +35,12 @@ exports.configDialog = {
 
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
-    const { urlToNode } = api.require('./vfs')
+    const { urlToNode, hasPermission, nodeIsDirectory } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const { _ } = api
     // keep in memory
     let links = []
-    api.subscribeConfig('links', v => links = v.map(x => ({ ...x, expiration: x.expiration && new Date(x.expiration) })))
+    api.subscribeConfig('links', v => links = v.map(x => ({ ...x, expiration: x.expiration && new Date(x.expiration) }))) // conversion is necessary for hfs 0.57.0-rc10
     // purge
     api.setInterval(() => {
         const now = new Date
@@ -51,8 +51,17 @@ exports.init = api => {
         customRest: {
             async link(values, ctx) {
                 limitAccess(ctx)
+                if (!values.uri)
+                    throw "missing uri"
+                const node = await urlToNode(values.uri, ctx)
+                if (!node || await nodeIsDirectory(node, ctx))
+                    throw "bad uri"
+                if (!hasPermission(node, 'can_read', ctx))
+                    throw "missing permission"
+                if (!values.expiration)
+                    values.daysStartOnAccess = true
                 const token = api.misc.randomId(25) // 128 bits of randomness
-                api.setConfig('links', [...links, { token, by: api.getCurrentUsername(ctx), creation: new Date, ...values }])
+                api.setConfig('links', [...links, { token, by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values }])
                 return { token, baseUrl: await getBaseUrlOrDefault() }
             },
             async get_links(filter, ctx) {

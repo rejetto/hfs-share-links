@@ -30,9 +30,7 @@
                                     return HFS.dialogLib.alertDialog(t("0 days makes sense only when the flag is enabled"), 'warning')
                                 HFS.customRestCall('link', {
                                     uri: entry.uri,
-                                    ...onAccess ? { days, daysStartOnAccess: true }
-                                        : { expiration: new Date(Date.now() + days * 86400_000) },
-
+                                    ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
                                 }).then(res => {
                                     close()
                                     copy(res.baseUrl, res.token)
