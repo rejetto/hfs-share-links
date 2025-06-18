@@ -30,14 +30,16 @@
                                     const data = new FormData(ev.target)
                                     const days = Number(data.get('days'))
                                     const onAccess = data.get('daysStartOnAccess')
+                                    const dl = Boolean(data.get('forceDownload'))
                                     if (!onAccess && !days)
                                         return HFS.dialogLib.alertDialog(t('0 days makes sense only when the flag is enabled'), 'warning')
                                     HFS.customRestCall('link', {
                                         uri: entry.uri,
+                                        dl,
                                         ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
                                     }).then(res => {
                                         close()
-                                        copy(res.token)
+                                        copy(res.token, dl)
                                         reload()
                                     }, HFS.dialogLib.alertDialog)
                                 },
@@ -54,6 +56,10 @@
                                     h('input', { type: 'checkbox', name: 'daysStartOnAccess', value: 1 }),
                                     t('Days start on first access'),
                                 ),
+                                h('label', { className: 'field' },
+                                    h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
+                                    t('Force download'),
+                                ),
                                 h('button', { type: 'submit' }, HFS.hIcon('copy'), ' ', t('Create share-link')),
                             ),
                             list.length > 0 && h('div', { style: { marginTop: '2em', display: 'flex', flexDirection: 'column', gap: '.5em' } },
@@ -65,11 +71,11 @@
                                         reload()
                                     }),
                                     h('button', {
-                                            onClick () {
-                                                close()
-                                                copy(x.token)
-                                            },
+                                        onClick () {
+                                            close()
+                                            copy(x.token, x.dl)
                                         },
+                                    },
                                         HFS.hIcon('copy'), ' ' + t('Copy') + ' - ',
                                         ...x.expiration ? [t('Expires:'), ' ', HFS.misc.formatTimestamp(x.expiration)]
                                             : [t('Days:'), ' ', x.days, ' ', x.daysStartOnAccess && t('(start on first access)')],
@@ -83,9 +89,9 @@
         }]
     })
 
-    async function copy(token) {
+    async function copy(token, dl) {
         const {baseUrl} = await dataPromise
-        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + token)
+        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + token + (dl ? '&dl' : ''))
         HFS.toast(t("Share-link copied"), 'success')
     }
 }
