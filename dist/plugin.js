@@ -1,5 +1,5 @@
 exports.description = "Create links to download a file without login"
-exports.version = 1.22
+exports.version = 1.3
 exports.apiRequired = 12.1 // array.fields as function
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
@@ -7,7 +7,8 @@ exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457
 exports.changelog = [
     { "version": 1.2, "message": "improved security and logs" },
     { "version": 1.21, "message": "preview of number of links on a file" },
-    { "version": 1.22, "message": "force-download flag" }
+    { "version": 1.22, "message": "force-download flag" },
+    { "version": 1.3, "message": "customizable token" }
 ]
 exports.config = {
     onlyFor: {
@@ -65,8 +66,11 @@ exports.init = api => {
                     throw "missing permission"
                 if (!values.expiration)
                     values.daysStartOnAccess = true
-                const token = api.misc.randomId(25) // 128 bits of randomness
-                api.setConfig('links', [...links, { token, by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values }])
+                let {token} = values
+                if (_.find(links, { token }))
+                    throw "token already exists"
+                token ||= api.misc.randomId(25) // 128 bits of randomness
+                api.setConfig('links', [...links, { by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token }])
                 return { token, baseUrl: await getBaseUrlOrDefault() }
             },
             async get_links(filter, ctx) {

@@ -36,6 +36,7 @@
                                     HFS.customRestCall('link', {
                                         uri: entry.uri,
                                         dl,
+                                        token: data.get('token'),
                                         ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
                                     }).then(res => {
                                         close()
@@ -59,6 +60,13 @@
                                 h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
                                     t('Force download'),
+                                ),
+                                h('div', { className: 'field' },
+                                    h('label', {}, t('Token')),
+                                    h('input', {
+                                        name: 'token', placeholder: 'automatic',
+                                        style: { width: '15em', marginLeft: '1em' },
+                                    }),
                                 ),
                                 h('button', { type: 'submit' }, HFS.hIcon('copy'), ' ', t('Create share-link')),
                             ),
