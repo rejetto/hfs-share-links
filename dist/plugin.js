@@ -8,7 +8,8 @@ exports.changelog = [
     { "version": 1.2, "message": "improved security and logs" },
     { "version": 1.21, "message": "preview of number of links on a file" },
     { "version": 1.22, "message": "force-download flag" },
-    { "version": 1.3, "message": "customizable token" }
+    { "version": 1.3, "message": "customizable token" },
+    { "version": 1.31, "message": "fix: bad link in case of spaces in the token" }
 ]
 exports.config = {
     onlyFor: {

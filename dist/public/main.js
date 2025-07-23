@@ -72,7 +72,10 @@
                             ),
                             list.length > 0 && h('div', { style: { marginTop: '2em', display: 'flex', flexDirection: 'column', gap: '.5em' } },
                                 t('Existing links on this file'),
-                                list.map((x, i) => h('div', { key: i },
+                                list.map((x, i) => h('div', {
+                                    key: i,
+                                    style: { display: 'flex', alignItems: 'center' }
+                                },
                                     HFS.iconBtn('delete', async () => {
                                         await HFS.customRestCall('del_link', { token: x.token })
                                         setList(list.filter((_, j) => j !== i))
@@ -99,7 +102,7 @@
 
     async function copy(token, dl) {
         const {baseUrl} = await dataPromise
-        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + token + (dl ? '&dl' : ''))
+        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + encodeURIComponent(token) + (dl ? '&dl' : ''))
         HFS.toast(t("Share-link copied"), 'success')
     }
 }
