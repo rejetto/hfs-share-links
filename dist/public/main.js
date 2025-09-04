@@ -1,8 +1,9 @@
 'use strict';{
     const { h, t, _ } = HFS
+    const NAME = 'sharelink'
 
     let dataPromise
-    async function reload() {
+    function reload() {
         dataPromise = HFS.customRestCall('get_links')
     }
     HFS.watchState('username', reload, true)
@@ -12,42 +13,44 @@
 
     HFS.onEvent('fileMenu', async ({ entry }) => {
         const data = await dataPromise
+        if (!data) return
+        const {isFolder} = entry
         const ofThisFile = _.filter(data.list, { uri: entry.uri })
-        return !entry.isFolder && [{
+        return !entry.url && [{ // no links
             id: 'share-link',
             icon: 'link',
             label: t('Share-link') + ' (' + ofThisFile.length + ')',
             async onClick() {
                 const { close } = await HFS.dialogLib.newDialog({
-                    title: t('Share-link'),
+                    title: t("Share-link"),
                     Content() {
                         const [list, setList] = HFS.React.useState(ofThisFile)
                         return h('div', {},
                             h('form', {
                                 style: { display: 'flex', flexDirection: 'column', gap: '1em' },
-                                async onSubmit (ev) {
+                                async onSubmit(ev) {
                                     ev.preventDefault()
                                     const data = new FormData(ev.target)
                                     const days = Number(data.get('days'))
                                     const onAccess = data.get('daysStartOnAccess')
-                                    const dl = Boolean(data.get('forceDownload'))
                                     if (!onAccess && !days)
-                                        return HFS.dialogLib.alertDialog(t('0 days makes sense only when the flag is enabled'), 'warning')
+                                        return HFS.dialogLib.alertDialog(t("0 days makes sense only when the flag is enabled"), 'warning')
                                     HFS.customRestCall('link', {
                                         uri: entry.uri,
-                                        dl,
+                                        ...isFolder ? { isFolder, perms: data.getAll('perms') }
+                                            : { dl: Boolean(data.get('forceDownload')) },
                                         token: data.get('token'),
                                         ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
                                     }).then(res => {
                                         close()
-                                        copy(res.token, dl)
+                                        copy(res)
                                         reload()
                                     }, HFS.dialogLib.alertDialog)
                                 },
                             },
-                                t('Link for '), entry.uri,
+                                t("Link for "), entry.uri,
                                 h('div', { className: 'field' },
-                                    h('label', {}, t('Days to live')),
+                                    h('label', {}, t("Days to live")),
                                     h('input', {
                                         type: 'number', name: 'days', min: 0, step: .01, defaultValue: 1,
                                         style: { width: '5em', marginLeft: '1em' },
@@ -55,23 +58,42 @@
                                 ),
                                 h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'daysStartOnAccess', value: 1 }),
-                                    t('Days start on first access'),
+                                    t("Days start on first access"),
                                 ),
-                                h('label', { className: 'field' },
+                                isFolder && h('fieldset', { style: { display: 'flex', flexWrap: 'wrap', gap: '1em', padding: '.8em' } },
+                                    h('legend', {}, t("Permissions")),
+                                    h('label', { className: 'field' },
+                                        h('input', { type: 'checkbox', name: 'perms', value: 'list', defaultChecked: true }),
+                                        t("List"),
+                                    ),
+                                    h('label', { className: 'field' },
+                                        h('input', { type: 'checkbox', name: 'perms', value: 'read', defaultChecked: true }),
+                                        t("Download"),
+                                    ),
+                                    h('label', { className: 'field' },
+                                        h('input', { type: 'checkbox', name: 'perms', value: 'upload' }),
+                                        t("Upload"),
+                                    ),
+                                    h('label', { className: 'field' },
+                                        h('input', { type: 'checkbox', name: 'perms', value: 'delete' }),
+                                        t("Delete"),
+                                    ),
+                                ),
+                                !isFolder && h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
-                                    t('Force download'),
+                                    t("Force download"),
                                 ),
                                 h('div', { className: 'field' },
-                                    h('label', {}, t('Token')),
+                                    h('label', {}, t("Token")),
                                     h('input', {
                                         name: 'token', placeholder: 'automatic',
                                         style: { width: '15em', marginLeft: '1em' },
                                     }),
                                 ),
-                                h('button', { type: 'submit' }, HFS.hIcon('copy'), ' ', t('Create share-link')),
+                                h('button', { type: 'submit' }, HFS.hIcon('copy'), ' ', t("Create share-link")),
                             ),
-                            list.length > 0 && h('div', { style: { marginTop: '2em', display: 'flex', flexDirection: 'column', gap: '.5em' } },
-                                t('Existing links on this file'),
+                            list.length > 0 && h('div', { style: { marginTop: '1em', paddingTop: '1em', borderTop: '1px solid', display: 'flex', flexDirection: 'column', gap: '.5em' } },
+                                t("Existing links on this file"),
                                 list.map((x, i) => h('div', {
                                     key: i,
                                     style: { display: 'flex', alignItems: 'center' }
@@ -84,12 +106,14 @@
                                     h('button', {
                                         onClick () {
                                             close()
-                                            copy(x.token, x.dl)
+                                            copy(x)
                                         },
                                     },
-                                        HFS.hIcon('copy'), ' ' + t('Copy') + ' - ',
-                                        ...x.expiration ? [t('Expires:'), ' ', HFS.misc.formatTimestamp(x.expiration)]
-                                            : [t('Days:'), ' ', x.days, ' ', x.daysStartOnAccess && t('(start on first access)')],
+                                        HFS.hIcon('copy'), ' ' + t("Copy link"),
+                                        ' (',
+                                        ...x.expiration ? [t("Expires:"), ' ', HFS.misc.formatTimestamp(x.expiration)]
+                                            : [t("Days:"), ' ', x.days, ' ', x.daysStartOnAccess && t("(start on first access)")],
+                                        ')'
                                     ),
                                 )),
                             ),
@@ -98,11 +122,31 @@
                 })
             },
         }]
+
+        async function copy(rec) {
+            HFS.copyTextToClipboard(`${data.baseUrl}${rec.uri.endsWith('/') ? rec.uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`)
+            HFS.toast(t("Share-link copied"), 'success')
+        }
+
     })
 
-    async function copy(token, dl) {
-        const {baseUrl} = await dataPromise
-        HFS.copyTextToClipboard(baseUrl + '/?sharelink=' + encodeURIComponent(token) + (dl ? '&dl' : ''))
-        HFS.toast(t("Share-link copied"), 'success')
+    // use a cookie to mae folders access working
+    const token = new URLSearchParams(location.search).get(NAME)
+        || getCookie(NAME) // user refreshed, and the cookie is still valid. Keep refreshing it
+    const TTL = 5
+    if (token) {
+        history.replaceState({}, '', location.pathname) // hide token
+        setEphemeralCookie()
+        console.debug('share-link: cookie set')
+        setInterval(setEphemeralCookie, (TTL - 2) * 1000)
     }
+
+    function setEphemeralCookie() {
+        document.cookie = `${NAME}=${encodeURIComponent(token)}; Max-Age=${TTL}; Secure; Path=/; SameSite=Strict;`
+    }
+
+    function getCookie(name) {
+        return document.cookie.split('; ').find(x => x.startsWith(name + '='))?.split('=')[1]
+    }
+
 }

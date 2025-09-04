@@ -1,10 +1,11 @@
-exports.description = "Create links to download a file without login"
-exports.version = 1.3
-exports.apiRequired = 12.1 // array.fields as function
+exports.description = "Create links to download a file, or access a folder, without login"
+exports.version = 2.01
+exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.01, "message": "folders support" },
     { "version": 1.2, "message": "improved security and logs" },
     { "version": 1.21, "message": "preview of number of links on a file" },
     { "version": 1.22, "message": "force-download flag" },
@@ -42,7 +43,7 @@ exports.configDialog = {
 
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
-    const { urlToNode, hasPermission, nodeIsDirectory } = api.require('./vfs')
+    const { urlToNode, hasPermission, nodeIsFolder, getNodeName } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const { _ } = api
     // keep in memory
@@ -54,6 +55,16 @@ exports.init = api => {
         api.setConfig('links', links.filter(l => !(now > new Date(l.expiration))))
     }, 60_000)
 
+    api.events.on('checkVfsPermission', ({ node, perm, ctx }) => {
+        const token = ctx.cookies.get('sharelink')
+        if (!token) return
+        const rec = _.find(links, { token })
+        if (!rec?.isFolder) return
+        if (ctx.path.startsWith(rec.uri) || nodeToUrl(node).startsWith(rec.uri))
+            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list')))
+                return 0
+    })
+
     return {
         customRest: {
             async link(values, ctx) {
@@ -61,7 +72,7 @@ exports.init = api => {
                 if (!values.uri)
                     throw "missing uri"
                 const node = await urlToNode(values.uri, ctx)
-                if (!node || await nodeIsDirectory(node, ctx))
+                if (!node)
                     throw "bad uri"
                 if (!hasPermission(node, 'can_read', ctx))
                     throw "missing permission"
@@ -71,8 +82,9 @@ exports.init = api => {
                 if (_.find(links, { token }))
                     throw "token already exists"
                 token ||= api.misc.randomId(25) // 128 bits of randomness
-                api.setConfig('links', [...links, { by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token }])
-                return { token, baseUrl: await getBaseUrlOrDefault() }
+                const rec = { by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token }
+                api.setConfig('links', [...links, rec])
+                return { ...rec, baseUrl: await getBaseUrlOrDefault() }
             },
             async get_links(filter, ctx) {
                 try { limitAccess(ctx) }
@@ -90,11 +102,11 @@ exports.init = api => {
             },
         },
         async middleware(ctx) {
-            const { sharelink } = ctx.query
-            if (!sharelink) return
+            const token = ctx.query.sharelink
+            if (!token) return
+            const link = _.find(links, { token })
+            if (!link || link.uri.endsWith('/') || link.expiration && link.expiration < new Date) return
             ctx.stop()
-            const link = links.find(l => l.token === sharelink)
-            if (!link || link.expiration && link.expiration < new Date) return
             const node = await urlToNode(link.uri)
             if (!node) return
             await serveFileNode(ctx, node)
@@ -108,6 +120,16 @@ exports.init = api => {
                 links = _.without(links, link)
             api.setConfig('links', links)
         },
+    }
+
+    function nodeToUrl(n) {
+        let ret = nodeIsFolder(n) ? '/' : ''
+        while (n) {
+            const name = encodeURIComponent(getNodeName(n))
+            ret = name + '/' + ret
+            n = n.parent
+        }
+        return ret
     }
 
     function limitAccess(ctx) {
