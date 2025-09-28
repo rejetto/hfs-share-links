@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 2.01
+exports.version = 2.02
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.02, "message": "zip support" },
     { "version": 2.01, "message": "folders support" },
     { "version": 1.2, "message": "improved security and logs" },
     { "version": 1.21, "message": "preview of number of links on a file" },
@@ -61,7 +62,7 @@ exports.init = api => {
         const rec = _.find(links, { token })
         if (!rec?.isFolder) return
         if (ctx.path.startsWith(rec.uri) || nodeToUrl(node).startsWith(rec.uri))
-            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list')))
+            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list').replace('archive', 'read')))
                 return 0
     })
 
