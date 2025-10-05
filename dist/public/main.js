@@ -17,21 +17,28 @@
         const {isFolder} = entry
         const ofThisFile = _.filter(data.list, { uri: entry.uri })
         return !entry.url && [{ // no links
-            id: 'share-link',
+            id: 'share-links',
             icon: 'link',
-            label: t('Share-link') + ' (' + ofThisFile.length + ')',
+            label: t("Share-links") + ' (' + ofThisFile.length + ')',
             async onClick() {
+                const unitFactors = { m: 24*60, h: 24, d: 1 }
+                const unitLabels = {
+                    d: t("days"),
+                    h: t("hours"),
+                    m: t("minutes")
+                }
                 const { close } = await HFS.dialogLib.newDialog({
-                    title: t("Share-link"),
+                    title: t("Share-links"),
                     Content() {
                         const [list, setList] = HFS.React.useState(ofThisFile)
+                        const [unit, setUnit] = HFS.React.useState('d')
                         return h('div', {},
                             h('form', {
                                 style: { display: 'flex', flexDirection: 'column', gap: '1em' },
                                 async onSubmit(ev) {
                                     ev.preventDefault()
                                     const data = new FormData(ev.target)
-                                    const days = Number(data.get('days'))
+                                    const days = Number(data.get('ttl')) / unitFactors[unit]
                                     const onAccess = data.get('daysStartOnAccess')
                                     if (!onAccess && !days)
                                         return HFS.dialogLib.alertDialog(t("0 days makes sense only when the flag is enabled"), 'warning')
@@ -40,7 +47,7 @@
                                         ...isFolder ? { isFolder, perms: data.getAll('perms') }
                                             : { dl: Boolean(data.get('forceDownload')) },
                                         token: data.get('token'),
-                                        ...onAccess ? { days } : { expiration: new Date(Date.now() + days * 86400_000) },
+                                        ...onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400_000) },
                                     }).then(res => {
                                         close()
                                         copy(res)
@@ -50,15 +57,20 @@
                             },
                                 t("Link for "), entry.uri,
                                 h('div', { className: 'field' },
-                                    h('label', {}, t("Days to live")),
+                                    h('label', {}, t("Time to live")),
                                     h('input', {
-                                        type: 'number', name: 'days', min: 0, step: .01, defaultValue: 1,
-                                        style: { width: '5em', marginLeft: '1em' },
+                                        type: 'number', name: 'ttl', min: 0, defaultValue: 1,
+                                        style: { width: '5em', marginLeft: '1em', textAlign: 'right' },
                                     }),
+                                    h('select', {
+                                        value: unit,
+                                        onChange: ev => setUnit(ev.target.value),
+                                        style: { width: 'auto' }
+                                    }, Object.entries(unitLabels).map(([v,label]) => h('option', { key: v, value: v }, label)))
                                 ),
                                 h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'daysStartOnAccess', value: 1 }),
-                                    t("Days start on first access"),
+                                    t("Time starts from first access"),
                                 ),
                                 isFolder && h('fieldset', { style: { display: 'flex', flexWrap: 'wrap', gap: '1em', padding: '.8em' } },
                                     h('legend', {}, t("Permissions")),
@@ -112,7 +124,7 @@
                                         HFS.hIcon('copy'), ' ' + t("Copy link"),
                                         ' (',
                                         ...x.expiration ? [t("Expires:"), ' ', HFS.misc.formatTimestamp(x.expiration)]
-                                            : [t("Days:"), ' ', x.days, ' ', x.daysStartOnAccess && t("(start on first access)")],
+                                            : [Math.round(x.days * unitFactors[x.unit]), ' ', unitLabels[x.unit], ' ', x.daysStartOnAccess && t("from first access")],
                                         ')'
                                     ),
                                 )),
