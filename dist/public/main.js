@@ -41,14 +41,11 @@
                                     const days = Number(data.get('ttl')) / unitFactors[unit]
                                     const onAccess = data.get('daysStartOnAccess')
                                     if (!onAccess && !days)
-                                        return HFS.dialogLib.alertDialog(t("0 days makes sense only when the flag is enabled"), 'warning')
-                                    HFS.customRestCall('link', {
-                                        uri: entry.uri,
-                                        ...isFolder ? { isFolder, perms: data.getAll('perms') }
-                                            : { dl: Boolean(data.get('forceDownload')) },
-                                        token: data.get('token'),
-                                        ...onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400_000) },
-                                    }).then(res => {
+                                        return HFS.dialogLib.alertDialog(t(`0 {unit} works only when you enable "Time starts from first access"`, { unit: unitLabels[unit] }), 'warning')
+                                    const pars = { uri: entry.uri, token: data.get('token') }
+                                    Object.assign(pars, isFolder ? { isFolder, perms: data.getAll('perms') } : { dl: Boolean(data.get('forceDownload')) })
+                                    Object.assign(pars, onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400 * 1000) })
+                                    HFS.customRestCall('link', pars).then(res => {
                                         close()
                                         copy(res)
                                         reload()
@@ -158,7 +155,8 @@
     }
 
     function getCookie(name) {
-        return document.cookie.split('; ').find(x => x.startsWith(name + '='))?.split('=')[1]
+        const c = document.cookie.split('; ').find(x => x.startsWith(name + '='))
+        return c && c.split('=')[1]
     }
 
 }

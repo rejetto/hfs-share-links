@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 2.1
+exports.version = 2.11
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.11, "message": "compatibility with firefox 52" },
     { "version": 2.1, "message": "you can set hours or minutes instead of days" },
     { "version": 2.02, "message": "zip support" },
     { "version": 2.01, "message": "folders support" },
