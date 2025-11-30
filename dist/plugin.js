@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 2.11
+exports.version = 2.12
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.12, "message": "fix: links should not be case sensitive" },
     { "version": 2.11, "message": "compatibility with firefox 52" },
     { "version": 2.1, "message": "you can set hours or minutes instead of days" },
     { "version": 2.02, "message": "zip support" },
@@ -46,7 +47,7 @@ exports.configDialog = {
 
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
-    const { urlToNode, hasPermission, nodeIsFolder, getNodeName } = api.require('./vfs')
+    const { urlToNode, hasPermission, getNodeName, isSameFilenameAs } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const { _ } = api
     // keep in memory
@@ -63,7 +64,9 @@ exports.init = api => {
         if (!token) return
         const rec = _.find(links, { token })
         if (!rec?.isFolder) return
-        if (ctx.path.startsWith(rec.uri) || nodeToUrl(node).startsWith(rec.uri))
+        const match = isSameFilenameAs(rec.uri)
+        const startsAsRecord = x => match(x.slice(0, rec.uri.length))
+        if (startsAsRecord(ctx.path) || startsAsRecord(nodeToUrl(node)))
             if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list').replace('archive', 'read')))
                 return 0
     })
@@ -126,7 +129,7 @@ exports.init = api => {
     }
 
     function nodeToUrl(n) {
-        let ret = nodeIsFolder(n) ? '/' : ''
+        let ret = ''
         while (n) {
             const name = encodeURIComponent(getNodeName(n))
             ret = name + '/' + ret
