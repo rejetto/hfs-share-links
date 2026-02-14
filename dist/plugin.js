@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 2.12
+exports.version = 2.13
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.13, "message": "fix: enforce expiration for folders immediately instead of in-a-minute" },
     { "version": 2.12, "message": "fix: links should not be case sensitive" },
     { "version": 2.11, "message": "compatibility with firefox 52" },
     { "version": 2.1, "message": "you can set hours or minutes instead of days" },
@@ -52,17 +53,17 @@ exports.init = api => {
     const { _ } = api
     // keep in memory
     let links = []
-    api.subscribeConfig('links', v => links = v.map(x => ({ ...x, expiration: x.expiration && new Date(x.expiration) }))) // conversion is necessary for hfs 0.57.0-rc10
+    api.subscribeConfig('links', v => links = v.map(x => normalizeLink({ ...x, expiration: x.expiration && new Date(x.expiration) }))) // conversion is necessary for hfs 0.57.0-rc10
     // purge
     api.setInterval(() => {
-        const now = new Date
-        api.setConfig('links', links.filter(l => !(now > new Date(l.expiration))))
+        api.setConfig('links', links.filter(l => !isExpired(l)))
     }, 60_000)
 
     api.events.on('checkVfsPermission', ({ node, perm, ctx }) => {
         const token = ctx.cookies.get('sharelink')
         if (!token) return
         const rec = _.find(links, { token })
+        if (!rec || isExpired(rec)) return
         if (!rec?.isFolder) return
         const match = isSameFilenameAs(rec.uri)
         const startsAsRecord = x => match(x.slice(0, rec.uri.length))
@@ -88,7 +89,7 @@ exports.init = api => {
                 if (_.find(links, { token }))
                     throw "token already exists"
                 token ||= api.misc.randomId(25) // 128 bits of randomness
-                const rec = { by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token }
+                const rec = normalizeLink({ by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token })
                 api.setConfig('links', [...links, rec])
                 return { ...rec, baseUrl: await getBaseUrlOrDefault() }
             },
@@ -111,7 +112,7 @@ exports.init = api => {
             const token = ctx.query.sharelink
             if (!token) return
             const link = _.find(links, { token })
-            if (!link || link.uri.endsWith('/') || link.expiration && link.expiration < new Date) return
+            if (!link || link.uri.endsWith('/') || isExpired(link)) return
             ctx.stop()
             const node = await urlToNode(link.uri)
             if (!node) return
@@ -143,5 +144,15 @@ exports.init = api => {
         if (!limitTo?.length) return
         if (!api.ctxBelongsTo(ctx, limitTo))
             throw 401
+    }
+
+    function isExpired(link) {
+        return link.expiration && link.expiration < new Date
+    }
+
+    function normalizeLink(link) {
+        if (link.expiration) return link
+        if (link.unit === 'd' || link.unit === 'h' || link.unit === 'm') return link
+        return { ...link, unit: 'd' }
     }
 }
