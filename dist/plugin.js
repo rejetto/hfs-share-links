@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 2.2
+exports.version = 2.21
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 2.21, "message": "improved security" },
     { "version": 2.2, "message": "option: delete file when link expires" },
     { "version": 2.13, "message": "fix: enforce expiration for folders immediately instead of in-a-minute" },
     { "version": 2.12, "message": "fix: links should not be case sensitive" },
@@ -89,6 +90,8 @@ exports.init = api => {
                 if (!values.expiration)
                     values.daysStartOnAccess = true
                 values.deleteFileOnExpiration = !values.isFolder && Boolean(values.deleteFileOnExpiration)
+                if (values.deleteFileOnExpiration && !hasPermission(node, 'can_delete', ctx))
+                    throw "missing permission"
                 if (!values.isFolder)
                     values.source = node.source
                 let {token} = values
