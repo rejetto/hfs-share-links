@@ -1,6 +1,8 @@
 'use strict';{
     const { h, t, _ } = HFS
     const NAME = 'sharelink'
+    const pluginPublic = HFS.getPluginPublic()
+    let qrPromise
 
     let dataPromise
     function reload() {
@@ -50,6 +52,7 @@
                                     HFS.customRestCall('link', pars).then(res => {
                                         close()
                                         copy(res)
+                                        showQr(res).catch(HFS.dialogLib.alertDialog)
                                         reload()
                                     }, HFS.dialogLib.alertDialog)
                                 },
@@ -130,6 +133,13 @@
                                             : [Math.round(x.days * unitFactors[x.unit]), ' ', unitLabels[x.unit], ' ', x.daysStartOnAccess && t("from first access")],
                                         ')'
                                     ),
+                                    h('button', {
+                                        onClick() {
+                                            showQr(x).catch(HFS.dialogLib.alertDialog)
+                                        },
+                                        title: t("QR code"),
+                                        style: { marginLeft: '.5em' },
+                                    }, 'QR'),
                                 )),
                             ),
                         )
@@ -138,12 +148,62 @@
             },
         }]
 
-        async function copy(rec) {
-            HFS.copyTextToClipboard(`${data.baseUrl}${rec.uri.endsWith('/') ? rec.uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`)
+        function copy(rec) {
+            HFS.copyTextToClipboard(getShareUrl(rec))
             HFS.toast(t("Share-link copied"), 'success')
         }
 
+        async function showQr(rec) {
+            const url = getShareUrl(rec)
+            const qr = await loadQr()
+            await HFS.dialogLib.newDialog({
+                title: t("Link"),
+                Content() {
+                    return h('div', { style: { display: 'grid', justifyItems: 'center', background: 'white'} },
+                        h(QrCode, { url }),
+                        h('textarea', {
+                            value: url,
+                            readOnly: true,
+                            onFocus(ev) { ev.target.select() },
+                            style: { width: '100%', height: '4.2em' },
+                        }),
+                    )
+                },
+            })
+
+            function QrCode({ url }) {
+                const ref = HFS.React.useRef()
+                HFS.React.useEffect(() => {
+                    const canvas = document.createElement('canvas')
+                    qr.generate(url).toCanvas(canvas)
+                    canvas.style.display = 'block'
+                    canvas.style.imageRendering = 'pixelated'
+                    canvas.style.width = '100%'
+                    // replaceChildren is too new for the old browsers this plugin still supports
+                    if (ref.current.replaceChildren)
+                        ref.current.replaceChildren(canvas)
+                    else {
+                        ref.current.textContent = ''
+                        ref.current.appendChild(canvas)
+                    }
+                }, [url])
+                return h('div', { ref, style: { width: 'min(70vw, 20em)' } })
+            }
+
+        }
+
+        function getShareUrl(rec) {
+            return `${data.baseUrl}${rec.uri.endsWith('/') ? rec.uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`
+        }
+
     })
+
+    function loadQr() {
+        // load only when requested so normal file lists do not pay the QR cost
+        if (!qrPromise)
+            qrPromise = HFS.loadScript(pluginPublic + 'lean-qr.js').then(() => window.LeanQR)
+        return qrPromise
+    }
 
     // use a cookie to mae folders access working
     const token = new URLSearchParams(location.search).get(NAME)
