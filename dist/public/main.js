@@ -94,7 +94,7 @@
                                     h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
                                     t("Force download"),
                                 ),
-                                !isFolder && h('label', { className: 'field' },
+                                !isFolder && entry.canDelete() && h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'deleteFileOnExpiration', value: 1 }),
                                     t("Delete file on expiration"),
                                 ),
