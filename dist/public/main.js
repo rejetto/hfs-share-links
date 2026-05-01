@@ -43,7 +43,9 @@
                                     if (!onAccess && !days)
                                         return HFS.dialogLib.alertDialog(t(`0 {unit} works only when you enable "Time starts from first access"`, { unit: unitLabels[unit] }), 'warning')
                                     const pars = { uri: entry.uri, token: data.get('token') }
-                                    Object.assign(pars, isFolder ? { isFolder, perms: data.getAll('perms') } : { dl: Boolean(data.get('forceDownload')) })
+                                    Object.assign(pars, isFolder
+                                        ? { isFolder, perms: data.getAll('perms') }
+                                        : { dl: Boolean(data.get('forceDownload')), deleteFileOnExpiration: Boolean(data.get('deleteFileOnExpiration')) })
                                     Object.assign(pars, onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400 * 1000) })
                                     HFS.customRestCall('link', pars).then(res => {
                                         close()
@@ -56,7 +58,7 @@
                                 h('div', { className: 'field' },
                                     h('label', {}, t("Time to live")),
                                     h('input', {
-                                        type: 'number', name: 'ttl', min: 0, defaultValue: 1,
+                                        type: 'number', name: 'ttl', min: 0, step: 0.1, defaultValue: 1,
                                         style: { width: '5em', marginLeft: '1em', textAlign: 'right' },
                                     }),
                                     h('select', {
@@ -91,6 +93,10 @@
                                 !isFolder && h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
                                     t("Force download"),
+                                ),
+                                !isFolder && h('label', { className: 'field' },
+                                    h('input', { type: 'checkbox', name: 'deleteFileOnExpiration', value: 1 }),
+                                    t("Delete file on expiration"),
                                 ),
                                 h('div', { className: 'field' },
                                     h('label', {}, t("Token")),
