@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3
+exports.version = 3.01
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.01, "message": "fix: faulty URLs when using host roots; improved security" },
     { "version": 3,    "message": "QR code" },
     { "version": 2.21, "message": "fix: improved security" },
     { "version": 2.2, "message": "option: delete file when link expires" },
@@ -52,6 +53,7 @@ exports.configDialog = {
 
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
+    const { roots } = api.require('./roots')
     const { urlToNode, hasPermission, getNodeName, isSameFilenameAs } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const fs = api.require('fs/promises')
@@ -78,6 +80,15 @@ exports.init = api => {
     })
 
     return {
+        onDirEntry({ entry, node, ctx }) {
+            try { limitAccess(ctx) }
+            catch { return }
+            const username = api.getCurrentUsername(ctx)
+            const uri = nodeToLinkUri(node, entry)
+            const count = links.filter(link => link.by === username && link.uri === uri && !isExpired(link)).length
+            if (count)
+                entry.shareLinks = count
+        },
         customRest: {
             async link(values, ctx) {
                 limitAccess(ctx)
@@ -101,19 +112,25 @@ exports.init = api => {
                 token ||= api.misc.randomId(25) // 128 bits of randomness
                 const rec = normalizeLink({ by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token })
                 api.setConfig('links', [...links, rec])
-                return { ...rec, baseUrl: await getBaseUrlOrDefault() }
+                const baseUrl = await getBaseUrlOrDefault()
+                const root = getRootForBaseUrl(baseUrl)
+                return { ...safeLink(rec), baseUrl, ...(root && { sharePath: stripApplicableRoot(rec.uri, root) }) }
             },
-            async get_links(filter, ctx) {
+            async get_links(filter = {}, ctx) {
                 try { limitAccess(ctx) }
                 catch { return false }
+                const baseUrl = await getBaseUrlOrDefault()
+                const root = getRootForBaseUrl(baseUrl)
+                const includeSharePath = 'uri' in filter
                 filter.by = api.getCurrentUsername(ctx)
                 return {
-                    baseUrl: await getBaseUrlOrDefault(),
-                    list: _.filter(links, filter)
+                    baseUrl,
+                    list: _.filter(links, filter).map(link => safeLink(link, includeSharePath && root)),
                 }
             },
             del_link(filter, ctx) {
                 limitAccess(ctx)
+                filter.by = api.getCurrentUsername(ctx)
                 _.remove(links, filter)
                 api.setConfig('links', links)
             },
@@ -153,6 +170,11 @@ exports.init = api => {
         return ret
     }
 
+    function nodeToLinkUri(node, entry) {
+        const uri = nodeToUrl(node)
+        return entry.n.endsWith('/') ? uri : uri.slice(0, -1)
+    }
+
     function limitAccess(ctx) {
         const limitTo = api.getConfig('onlyFor')
         if (!limitTo?.length) return
@@ -168,6 +190,29 @@ exports.init = api => {
         if (link.expiration) return link
         if (link.unit === 'd' || link.unit === 'h' || link.unit === 'm') return link
         return { ...link, unit: 'd' }
+    }
+
+    function safeLink(link, root) {
+        const ret = _.pick(link, ['token', 'expiration', 'days', 'daysStartOnAccess', 'unit', 'dl'])
+        if (root)
+            ret.sharePath = stripApplicableRoot(link.uri, root)
+        return ret
+    }
+
+    function getRootForBaseUrl(baseUrl) {
+        try {
+            const root = roots.compiled()?.(new URL(baseUrl).host)
+            return root && root !== '/' ? root : undefined
+        }
+        catch {}
+    }
+
+    function stripApplicableRoot(uri, root) {
+        if (!root || root === '/') return uri
+        if (uri === root.slice(0, -1)) return '/'
+        if (!uri.startsWith(root)) return uri
+        // a host root is applied again by HFS, so public links must not include it
+        return '/' + uri.slice(root.length)
     }
 
     function purgeExpiredLinks() {

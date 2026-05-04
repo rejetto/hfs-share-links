@@ -4,20 +4,14 @@
     const pluginPublic = HFS.getPluginPublic()
     let qrPromise
 
-    let dataPromise
-    function reload() {
-        dataPromise = HFS.customRestCall('get_links')
-    }
-    HFS.watchState('username', reload, true)
-
-    HFS.onEvent('additionalEntryDetails', async ({ entry }) =>
-        _.find((await dataPromise).list, { uri: entry.uri }) && HFS.hIcon('link', { title: t("Share-link") }))
+    HFS.onEvent('additionalEntryDetails', ({ entry }) =>
+        entry.shareLinks && HFS.hIcon('link', { title: t("Share-link") }))
 
     HFS.onEvent('fileMenu', async ({ entry }) => {
-        const data = await dataPromise
+        const data = await getLinksFor(entry)
         if (!data) return
         const {isFolder} = entry
-        const ofThisFile = _.filter(data.list, { uri: entry.uri })
+        const ofThisFile = data.list.map(withEntryUri)
         return !entry.url && [{ // no links
             id: 'share-links',
             icon: 'link',
@@ -51,9 +45,9 @@
                                     Object.assign(pars, onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400 * 1000) })
                                     HFS.customRestCall('link', pars).then(res => {
                                         close()
-                                        copy(res)
-                                        showQr(res).catch(HFS.dialogLib.alertDialog)
-                                        reload()
+                                        const rec = withEntryUri(res)
+                                        copy(rec)
+                                        showQr(rec).catch(HFS.dialogLib.alertDialog)
                                     }, HFS.dialogLib.alertDialog)
                                 },
                             },
@@ -119,7 +113,6 @@
                                     HFS.iconBtn('delete', async () => {
                                         await HFS.customRestCall('del_link', { token: x.token })
                                         setList(list.filter((_, j) => j !== i))
-                                        reload()
                                     }),
                                     h('button', {
                                         onClick () {
@@ -193,10 +186,19 @@
         }
 
         function getShareUrl(rec) {
-            return `${data.baseUrl}${rec.uri.endsWith('/') ? rec.uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`
+            const uri = rec.sharePath || rec.uri
+            return `${rec.baseUrl || data.baseUrl}${uri.endsWith('/') ? uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`
+        }
+
+        function withEntryUri(rec) {
+            return { ...rec, uri: entry.uri }
         }
 
     })
+
+    function getLinksFor(entry) {
+        return HFS.customRestCall('get_links', { uri: entry.uri })
+    }
 
     function loadQr() {
         // load only when requested so normal file lists do not pay the QR cost
