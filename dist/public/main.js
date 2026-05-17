@@ -207,24 +207,39 @@
         return qrPromise
     }
 
-    // use a cookie to mae folders access working
-    const token = new URLSearchParams(location.search).get(NAME)
-        || getCookie(NAME) // user refreshed, and the cookie is still valid. Keep refreshing it
-    const TTL = 5
-    if (token) {
+    // use a cookie to make folder access work
+    const tokenFromUrl = new URLSearchParams(location.search).get(NAME)
+    if (tokenFromUrl)
         history.replaceState({}, '', location.pathname) // hide token
-        setEphemeralCookie()
-        console.debug('share-link: cookie set')
-        setInterval(setEphemeralCookie, (TTL - 2) * 1000)
+    let refreshTimer
+    let skipNextAccessToast = Boolean(tokenFromUrl)
+    HFS.watchState('uri', checkShareLinkAccess, true)
+
+    function checkShareLinkAccess(uri) {
+        HFS.customRestCall('get_sharelink_access', { uri }).then(active => {
+            if (active) {
+                if (skipNextAccessToast)
+                    skipNextAccessToast = false
+                else
+                    HFS.toast(t("Share-link access restored from this browser"), 'info')
+                startRefresh()
+            }
+            else if (refreshTimer) {
+                clearInterval(refreshTimer)
+                refreshTimer = undefined
+            }
+        })
     }
 
-    function setEphemeralCookie() {
-        document.cookie = `${NAME}=${encodeURIComponent(token)}; Max-Age=${TTL}; Secure; Path=/; SameSite=Strict;`
-    }
-
-    function getCookie(name) {
-        const c = document.cookie.split('; ').find(x => x.startsWith(name + '='))
-        return c && c.split('=')[1]
+    function startRefresh() {
+        if (refreshTimer) return
+        // refresh through the backend so the share token can stay httpOnly
+        refreshTimer = setInterval(() =>
+            HFS.customRestCall('get_sharelink_access', { uri: HFS.state.uri }).then(active => {
+                if (active) return
+                clearInterval(refreshTimer)
+                refreshTimer = undefined
+            }), 60_000)
     }
 
 }

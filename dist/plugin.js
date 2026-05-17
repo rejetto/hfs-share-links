@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.01
+exports.version = 3.1
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.1,  "message": "fix: access to folder not working + safer cookie storage + notify user of cookie usage" },
     { "version": 3.01, "message": "fix: faulty URLs when using host roots; improved security" },
     { "version": 3,    "message": "QR code" },
     { "version": 2.21, "message": "fix: improved security" },
@@ -35,7 +36,7 @@ exports.config = {
         fields: values => ({
             uri: { $width: 1.5, label: "URI", type: 'vfs_path', $mergeRender: { expiration: {} } },
             token: { required: true, $hideUnder: true },
-            expiration: { type: 'date_time', label: "Expiration date", $hideUnder: 'sm', $width: 1,
+            expiration: { type: 'date_time', label: "Expiration date", $hideUnder: 'sm', $width: 1, sm: 6,
                 $render: ({ value, row }) => value ? new Date(value).toLocaleString() : `Expires in ${row.days} day(s) after first access`
             },
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 2 },
@@ -44,6 +45,7 @@ exports.config = {
             creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, $mergeRender: { by: {} },
                 type: (!values || values.creation) && 'date_time', }, // no type to show placeholder (values is false for table, not form)
             by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, $render: ({ value }) => value && ("by " + value) },
+            perms: { type: 'multiselect', options: ['list','read','upload','delete'] },
         })
     },
 }
@@ -65,7 +67,8 @@ exports.init = api => {
     api.setInterval(purgeExpiredLinks, 60_000)
 
     api.events.on('checkVfsPermission', ({ node, perm, ctx }) => {
-        const token = ctx.cookies.get('sharelink')
+        // folder links arrive with the token in the URL before the browser has our cookie
+        const token = ctx.query.sharelink || ctx.cookies.get('sharelink')
         if (!token) return
         const rec = _.find(links, { token })
         if (!rec) return
@@ -75,8 +78,11 @@ exports.init = api => {
         const match = isSameFilenameAs(rec.uri)
         const startsAsRecord = x => match(x.slice(0, rec.uri.length))
         if (startsAsRecord(ctx.path) || startsAsRecord(nodeToUrl(node)))
-            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list').replace('archive', 'read')))
+            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list').replace('archive', 'read'))) {
+                // a cookie-only visit skips middleware, so refresh the cookie in a frontend-readable form
+                setShareLinkCookie(ctx, token)
                 return 0
+            }
     })
 
     return {
@@ -134,14 +140,25 @@ exports.init = api => {
                 _.remove(links, filter)
                 api.setConfig('links', links)
             },
+            get_sharelink_access({ uri }, ctx) {
+                const token = ctx.cookies.get('sharelink')
+                const link = token && getFolderLink(token)
+                if (!link || !uri || !isLinkForUri(link, uri) || !link.perms?.includes('list')) return false
+                setShareLinkCookie(ctx, token)
+                return true
+            },
         },
         async middleware(ctx) {
             const token = ctx.query.sharelink
             if (!token) return
             const link = _.find(links, { token })
-            if (!link || link.uri.endsWith('/')) return
+            if (!link) return
             if (isExpired(link))
                 return void purgeExpiredLinks()
+            if (link.uri.endsWith('/')) {
+                setShareLinkCookie(ctx, token)
+                return
+            }
             ctx.stop()
             const node = await urlToNode(link.uri)
             if (!node) return
@@ -190,6 +207,22 @@ exports.init = api => {
         if (link.expiration) return link
         if (link.unit === 'd' || link.unit === 'h' || link.unit === 'm') return link
         return { ...link, unit: 'd' }
+    }
+
+    function setShareLinkCookie(ctx, token) {
+        // keep the cookie short-lived so folder access does not silently survive normal browsing
+        ctx.cookies.set('sharelink', token, { maxAge: 120_000, sameSite: 'lax' })
+    }
+
+    function getFolderLink(token) {
+        const rec = _.find(links, { token })
+        if (!rec?.isFolder || isExpired(rec)) return
+        return rec
+    }
+
+    function isLinkForUri(link, uri) {
+        const match = isSameFilenameAs(link.uri)
+        return match(uri.slice(0, link.uri.length))
     }
 
     function safeLink(link, root) {
