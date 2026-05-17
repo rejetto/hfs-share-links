@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.1
+exports.version = 3.11
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.11, "message": "fix: access to folders with non-latin chars" },
     { "version": 3.1,  "message": "fix: access to folder not working + safer cookie storage + notify user of cookie usage" },
     { "version": 3.01, "message": "fix: faulty URLs when using host roots; improved security" },
     { "version": 3,    "message": "QR code" },
@@ -56,33 +57,34 @@ exports.configDialog = {
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
     const { roots } = api.require('./roots')
-    const { urlToNode, hasPermission, getNodeName, isSameFilenameAs } = api.require('./vfs')
+    const { urlToNode, hasPermission, getNodeName, normalizeFilename } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const fs = api.require('fs/promises')
     const { _ } = api
     // keep in memory
     let links = []
-    api.subscribeConfig('links', v => links = v.map(x => normalizeLink({ ...x, expiration: x.expiration && new Date(x.expiration) }))) // conversion is necessary for hfs 0.57.0-rc10
+    let folderLinksByToken = new Map()
+    const shareLinkCookieRefreshed = Symbol('shareLinkCookieRefreshed')
+    const shareLinkTokens = Symbol('shareLinkTokens')
+    const shareLinkNodeAccess = Symbol('shareLinkNodeAccess')
+    api.subscribeConfig('links', v => {
+        links = v.map(x => normalizeLink({ ...x, expiration: x.expiration && new Date(x.expiration) })) // conversion is necessary for hfs 0.57.0-rc10
+        // checkVfsPermission runs once per permission check, so keep stable matching data out of its hot path
+        folderLinksByToken = new Map(links.filter(x => x.isFolder).map(link => [link.token, makeFolderLinkAccess(link)]))
+    })
     // purge
     api.setInterval(purgeExpiredLinks, 60_000)
 
     api.events.on('checkVfsPermission', ({ node, perm, ctx }) => {
-        // folder links arrive with the token in the URL before the browser has our cookie
-        const token = ctx.query.sharelink || ctx.cookies.get('sharelink')
-        if (!token) return
-        const rec = _.find(links, { token })
-        if (!rec) return
-        if (isExpired(rec))
+        const access = getAccessForNode(ctx, node)
+        if (!access) return
+        if (isExpired(access.link))
             return void purgeExpiredLinks()
-        if (!rec?.isFolder) return
-        const match = isSameFilenameAs(rec.uri)
-        const startsAsRecord = x => match(x.slice(0, rec.uri.length))
-        if (startsAsRecord(ctx.path) || startsAsRecord(nodeToUrl(node)))
-            if (rec.perms?.includes(perm.replace('can_', '').replace('see', 'list').replace('archive', 'read'))) {
-                // a cookie-only visit skips middleware, so refresh the cookie in a frontend-readable form
-                setShareLinkCookie(ctx, token)
-                return 0
-            }
+        if (access.perms.has(perm)) {
+            // a cookie-only visit skips middleware, so refresh access only after permission is confirmed
+            setShareLinkCookie(ctx, access.link.token)
+            return 0
+        }
     })
 
     return {
@@ -141,22 +143,24 @@ exports.init = api => {
                 api.setConfig('links', links)
             },
             get_sharelink_access({ uri }, ctx) {
-                const token = ctx.cookies.get('sharelink')
-                const link = token && getFolderLink(token)
-                if (!link || !uri || !isLinkForUri(link, uri) || !link.perms?.includes('list')) return false
-                setShareLinkCookie(ctx, token)
+                const access = uri && getAccessForUri(getShareLinkTokens(ctx), normalizeUri(uri))
+                if (!access || !uri || !isLinkForUri(access, uri) || !access.perms.has('can_list')) return false
+                setShareLinkCookie(ctx, access.link.token)
                 return true
             },
         },
         async middleware(ctx) {
-            const token = ctx.query.sharelink
-            if (!token) return
-            const link = _.find(links, { token })
+            const tokens = getShareLinkTokens(ctx)
+            if (tokens.length)
+                ctx[shareLinkTokens] = tokens
+            const queryToken = ctx.query.sharelink
+            if (!queryToken) return
+            const link = _.find(links, { token: queryToken })
             if (!link) return
             if (isExpired(link))
                 return void purgeExpiredLinks()
             if (link.uri.endsWith('/')) {
-                setShareLinkCookie(ctx, token)
+                setShareLinkCookie(ctx, queryToken)
                 return
             }
             ctx.stop()
@@ -210,19 +214,99 @@ exports.init = api => {
     }
 
     function setShareLinkCookie(ctx, token) {
+        if (ctx[shareLinkCookieRefreshed] === token) return
+        ctx[shareLinkCookieRefreshed] = token
         // keep the cookie short-lived so folder access does not silently survive normal browsing
-        ctx.cookies.set('sharelink', token, { maxAge: 120_000, sameSite: 'lax' })
+        ctx.cookies.set('sharelink', encodeURIComponent(JSON.stringify([token, ...getCookieShareLinkTokens(ctx).filter(x => x !== token)].slice(0, 8))), { maxAge: 120_000, sameSite: 'strict', httpOnly: true })
     }
 
-    function getFolderLink(token) {
-        const rec = _.find(links, { token })
-        if (!rec?.isFolder || isExpired(rec)) return
-        return rec
+    function getFolderLinkAccess(token) {
+        const access = folderLinksByToken.get(token)
+        if (!access || isExpired(access.link)) return
+        return access
     }
 
-    function isLinkForUri(link, uri) {
-        const match = isSameFilenameAs(link.uri)
-        return match(uri.slice(0, link.uri.length))
+    function getAccessForUri(tokens, normalizedUri) {
+        for (const token of tokens) {
+            const access = getFolderLinkAccess(token)
+            if (access && isLinkForNormalizedUri(access, normalizedUri))
+                return access
+        }
+    }
+
+    function getAccessForNode(ctx, node) {
+        if (!ctx[shareLinkTokens]?.length) return
+        ctx[shareLinkNodeAccess] ||= new WeakMap()
+        if (ctx[shareLinkNodeAccess].has(node))
+            return ctx[shareLinkNodeAccess].get(node)
+        // APIs like get_file_details receive many uris, so there is no single request uri to preselect
+        const access = getAccessForUri(ctx[shareLinkTokens], normalizeUri(nodeToUrl(node)))
+        ctx[shareLinkNodeAccess].set(node, access)
+        return access
+    }
+
+    function makeFolderLinkAccess(link) {
+        // share links can store mixed encoded paths while HFS compares decoded paths or fully encoded node URLs
+        return { link, normalizedUri: enforceFinalSlash(normalizeUri(link.uri)), perms: makeAllowedPerms(link.perms) }
+    }
+
+    function makeAllowedPerms(perms = []) {
+        // store HFS permission names so the permission hook only needs a Set lookup
+        const ret = new Set()
+        if (perms.includes('list')) {
+            ret.add('can_list')
+            ret.add('can_see')
+        }
+        if (perms.includes('read')) {
+            ret.add('can_read')
+            ret.add('can_archive')
+        }
+        if (perms.includes('upload')) ret.add('can_upload')
+        if (perms.includes('delete')) ret.add('can_delete')
+        return ret
+    }
+
+    function isLinkForUri(access, uri) {
+        return isLinkForNormalizedUri(access, normalizeUri(uri))
+    }
+
+    function isLinkForNormalizedUri(access, uri) {
+        return uri.startsWith(access.normalizedUri)
+    }
+
+    function normalizeUri(uri) {
+        return normalizeFilename(decodeUri(uri))
+    }
+
+    function getShareLinkTokens(ctx) {
+        const token = ctx.query.sharelink
+        if (token) return [token]
+        return getCookieShareLinkTokens(ctx)
+    }
+
+    function getCookieShareLinkTokens(ctx) {
+        return parseShareLinkCookie(ctx.cookies.get('sharelink'))
+    }
+
+    function parseShareLinkCookie(value) {
+        if (!value) return []
+        try {
+            const ret = JSON.parse(decodeURIComponent(value))
+            if (Array.isArray(ret)) return ret.filter(x => typeof x === 'string')
+        }
+        catch {}
+        if (value.includes('~')) return [value, ...value.split('~').filter(Boolean)].slice(0, 8)
+        try { return [decodeURIComponent(value)] }
+        catch { return [value] }
+    }
+
+    function decodeUri(uri) {
+        try { return decodeURI(uri) }
+        catch { return uri }
+    }
+
+    function enforceFinalSlash(uri) {
+        return uri.endsWith('/') ? uri : uri + '/'
     }
 
     function safeLink(link, root) {
