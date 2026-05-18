@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.11
+exports.version = 3.12
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.12, "message": "fix: comply with configured roots (if any)" },
     { "version": 3.11, "message": "fix: access to folders with non-latin chars" },
     { "version": 3.1,  "message": "fix: access to folder not working + safer cookie storage + notify user of cookie usage" },
     { "version": 3.01, "message": "fix: faulty URLs when using host roots; improved security" },
@@ -43,10 +44,10 @@ exports.config = {
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 2 },
             daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 5 },
             deleteFileOnExpiration: { type: 'boolean', defaultValue: false, sm: 5 },
-            creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, $mergeRender: { by: {} },
+            creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $mergeRender: { by: {} },
                 type: (!values || values.creation) && 'date_time', }, // no type to show placeholder (values is false for table, not form)
-            by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, $render: ({ value }) => value && ("by " + value) },
-            perms: { type: 'multiselect', options: ['list','read','upload','delete'] },
+            by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $render: ({ value }) => value && ("by " + value) },
+            perms: { type: 'multiselect', options: ['list','read','upload','delete'], sm: 4 },
         })
     },
 }
@@ -120,20 +121,18 @@ exports.init = api => {
                 token ||= api.misc.randomId(25) // 128 bits of randomness
                 const rec = normalizeLink({ by: api.getCurrentUsername(ctx), creation: new Date, days: 0, ...values, token })
                 api.setConfig('links', [...links, rec])
-                const baseUrl = await getBaseUrlOrDefault()
-                const root = getRootForBaseUrl(baseUrl)
-                return { ...safeLink(rec), baseUrl, ...(root && { sharePath: stripApplicableRoot(rec.uri, root) }) }
+                return { ...safeLink(rec), ...getPublicUrlParts(rec, ctx, await getBaseUrlOrDefault()) }
             },
             async get_links(filter = {}, ctx) {
                 try { limitAccess(ctx) }
                 catch { return false }
                 const baseUrl = await getBaseUrlOrDefault()
-                const root = getRootForBaseUrl(baseUrl)
                 const includeSharePath = 'uri' in filter
                 filter.by = api.getCurrentUsername(ctx)
                 return {
                     baseUrl,
-                    list: _.filter(links, filter).map(link => safeLink(link, includeSharePath && root)),
+                    list: _.filter(links, filter).map(link =>
+                        ({ ...safeLink(link), ...getPublicUrlParts(link, ctx, baseUrl, includeSharePath) })),
                 }
             },
             del_link(filter, ctx) {
@@ -309,11 +308,19 @@ exports.init = api => {
         return uri.endsWith('/') ? uri : uri + '/'
     }
 
-    function safeLink(link, root) {
+    function safeLink(link) {
         const ret = _.pick(link, ['token', 'expiration', 'days', 'daysStartOnAccess', 'unit', 'dl'])
-        if (root)
-            ret.sharePath = stripApplicableRoot(link.uri, root)
         return ret
+    }
+
+    function getPublicUrlParts(link, ctx, baseUrl, includeSharePath = true) {
+        const root = getRootForBaseUrl(baseUrl)
+        const sharePath = root && getPathInRoot(link.uri, root)
+        if (sharePath === false) {
+            // configured base_url points to a host-rooted view that cannot address this VFS uri
+            return { baseUrl: getRequestBaseUrl(ctx) }
+        }
+        return { baseUrl, ...(includeSharePath && sharePath && { sharePath }) }
     }
 
     function getRootForBaseUrl(baseUrl) {
@@ -324,12 +331,17 @@ exports.init = api => {
         catch {}
     }
 
-    function stripApplicableRoot(uri, root) {
+    function getPathInRoot(uri, root) {
         if (!root || root === '/') return uri
         if (uri === root.slice(0, -1)) return '/'
-        if (!uri.startsWith(root)) return uri
+        if (!uri.startsWith(root)) return false
         // a host root is applied again by HFS, so public links must not include it
         return '/' + uri.slice(root.length)
+    }
+
+    function getRequestBaseUrl(ctx) {
+        const { URL } = ctx
+        return URL.protocol + '//' + URL.host + (ctx.state.revProxyPath || '')
     }
 
     function purgeExpiredLinks() {

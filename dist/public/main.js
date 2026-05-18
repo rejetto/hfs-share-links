@@ -158,7 +158,7 @@
                             value: url,
                             readOnly: true,
                             onFocus(ev) { ev.target.select() },
-                            style: { width: '100%', height: '4.2em' },
+                            style: { width: '100%', height: '6em' },
                         }),
                     )
                 },
