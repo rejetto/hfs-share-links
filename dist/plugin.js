@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.12
+exports.version = 3.2
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.2, "message": "support folder links without path" },
     { "version": 3.12, "message": "fix: comply with configured roots (if any)" },
     { "version": 3.11, "message": "fix: access to folders with non-latin chars" },
     { "version": 3.1,  "message": "fix: access to folder not working + safer cookie storage + notify user of cookie usage" },
@@ -44,6 +45,7 @@ exports.config = {
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 2 },
             daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 5 },
             deleteFileOnExpiration: { type: 'boolean', defaultValue: false, sm: 5 },
+            includePath: values?.isFolder && { type: 'boolean', label: "Include path in link", defaultValue: true, sm: 4 },
             creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $mergeRender: { by: {} },
                 type: (!values || values.creation) && 'date_time', }, // no type to show placeholder (values is false for table, not form)
             by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $render: ({ value }) => value && ("by " + value) },
@@ -111,6 +113,8 @@ exports.init = api => {
                 if (!values.expiration)
                     values.daysStartOnAccess = true
                 values.deleteFileOnExpiration = !values.isFolder && Boolean(values.deleteFileOnExpiration)
+                if (!values.isFolder)
+                    delete values.includePath
                 if (values.deleteFileOnExpiration && !hasPermission(node, 'can_delete', ctx))
                     throw "missing permission"
                 if (!values.isFolder)
@@ -160,6 +164,12 @@ exports.init = api => {
                 return void purgeExpiredLinks()
             if (link.uri.endsWith('/')) {
                 setShareLinkCookie(ctx, queryToken)
+                const access = getFolderLinkAccess(queryToken)
+                if (access && !isLinkForNormalizedUri(access, normalizeUri(ctx.path))) {
+                    const redirectPath = getRequestPathForUri(link.uri, ctx)
+                    if (redirectPath)
+                        return ctx.redirect(ctx.state.revProxyPath + redirectPath + '?sharelink=' + encodeURIComponent(queryToken))
+                }
                 return
             }
             ctx.stop()
@@ -309,7 +319,7 @@ exports.init = api => {
     }
 
     function safeLink(link) {
-        const ret = _.pick(link, ['token', 'expiration', 'days', 'daysStartOnAccess', 'unit', 'dl'])
+        const ret = _.pick(link, ['token', 'expiration', 'days', 'daysStartOnAccess', 'unit', 'dl', 'includePath'])
         return ret
     }
 
@@ -342,6 +352,15 @@ exports.init = api => {
     function getRequestBaseUrl(ctx) {
         const { URL } = ctx
         return URL.protocol + '//' + URL.host + (ctx.state.revProxyPath || '')
+    }
+
+    function getRequestPathForUri(uri, ctx) {
+        const root = ctx.state.root
+        if (!root || root === '/') return uri
+        if (uri === root.slice(0, -1)) return '/'
+        if (!uri.startsWith(root)) return
+        // host roots are already applied by HFS, so redirect paths must be visible from the browser
+        return '/' + uri.slice(root.length)
     }
 
     function purgeExpiredLinks() {

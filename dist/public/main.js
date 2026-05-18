@@ -40,7 +40,7 @@
                                         return HFS.dialogLib.alertDialog(t(`0 {unit} works only when you enable "Time starts from first access"`, { unit: unitLabels[unit] }), 'warning')
                                     const pars = { uri: entry.uri, token: data.get('token') }
                                     Object.assign(pars, isFolder
-                                        ? { isFolder, perms: data.getAll('perms') }
+                                        ? { isFolder, perms: data.getAll('perms'), includePath: Boolean(data.get('includePath')) }
                                         : { dl: Boolean(data.get('forceDownload')), deleteFileOnExpiration: Boolean(data.get('deleteFileOnExpiration')) })
                                     Object.assign(pars, onAccess ? { days, unit } : { expiration: new Date(Date.now() + days * 86400 * 1000) })
                                     HFS.customRestCall('link', pars).then(res => {
@@ -86,6 +86,10 @@
                                         h('input', { type: 'checkbox', name: 'perms', value: 'delete' }),
                                         t("Delete"),
                                     ),
+                                ),
+                                isFolder && h('label', { className: 'field' },
+                                    h('input', { type: 'checkbox', name: 'includePath', value: 1, defaultChecked: true }),
+                                    t("Include path in link"),
                                 ),
                                 !isFolder && h('label', { className: 'field' },
                                     h('input', { type: 'checkbox', name: 'forceDownload', value: 1 }),
@@ -186,7 +190,8 @@
         }
 
         function getShareUrl(rec) {
-            const uri = rec.sharePath || rec.uri
+            // folder short links rely on the backend redirecting the token to the stored uri
+            const uri = isFolder && rec.includePath === false ? '/' : rec.sharePath || rec.uri
             return `${rec.baseUrl || data.baseUrl}${uri.endsWith('/') ? uri : '/'}?${NAME}=${encodeURIComponent(rec.token)}${rec.dl ? '&dl' : ''}`
         }
 
