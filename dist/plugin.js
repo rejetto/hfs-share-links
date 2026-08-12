@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.2
+exports.version = 3.21
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.21, "message": "Security: prevent share-links from granting permissions the creator does not have" },
     { "version": 3.2, "message": "support folder links without path" },
     { "version": 3.12, "message": "fix: comply with configured roots (if any)" },
     { "version": 3.11, "message": "fix: access to folders with non-latin chars" },
@@ -60,7 +61,7 @@ exports.configDialog = {
 exports.init = api => {
     const { getBaseUrlOrDefault } = api.require('./listen')
     const { roots } = api.require('./roots')
-    const { urlToNode, hasPermission, getNodeName, normalizeFilename } = api.require('./vfs')
+    const { urlToNode, hasPermission, getNodeName, normalizeFilename, nodeIsFolder } = api.require('./vfs')
     const { serveFileNode } = api.require('./serveFile')
     const fs = api.require('fs/promises')
     const { _ } = api
@@ -110,6 +111,10 @@ exports.init = api => {
                     throw "bad uri"
                 if (!hasPermission(node, 'can_read', ctx))
                     throw "missing permission"
+                values.isFolder = nodeIsFolder(node)
+                for (const perm of makeAllowedPerms(values.perms))
+                    if (!hasPermission(node, perm, ctx))
+                        throw "missing permission"
                 if (!values.expiration)
                     values.daysStartOnAccess = true
                 values.deleteFileOnExpiration = !values.isFolder && Boolean(values.deleteFileOnExpiration)
