@@ -1,10 +1,11 @@
 exports.description = "Create links to download a file, or access a folder, without login"
-exports.version = 3.21
+exports.version = 3.22
 exports.apiRequired = 12.92 // checkVfsPermission
 exports.repo = "rejetto/hfs-share-links"
 exports.frontend_js = "main.js"
 exports.preview = ["https://github.com/user-attachments/assets/c4904e7a-c6e3-457c-bab7-3d4f8328b3c7", "https://github.com/user-attachments/assets/1a49e538-078c-406c-a38e-6df391c42813"]
 exports.changelog = [
+    { "version": 3.22, "message": "Workaround for crash on HFS 3.3.0-3.3.2" },
     { "version": 3.21, "message": "Security: prevent share-links from granting permissions the creator does not have" },
     { "version": 3.2, "message": "support folder links without path" },
     { "version": 3.12, "message": "fix: comply with configured roots (if any)" },
@@ -46,7 +47,7 @@ exports.config = {
             days: !values.expiration && { $hideUnder: true, type: 'number', label: "Expire after", unit: 'days', min: 0, step: .01, defaultValue: 1, xs: 5, sm: 2 },
             daysStartOnAccess: !values.expiration && { $hideUnder: true, type: 'boolean', xs: 7, sm: 5 },
             deleteFileOnExpiration: { type: 'boolean', defaultValue: false, sm: 5 },
-            includePath: values?.isFolder && { type: 'boolean', label: "Include path in link", defaultValue: true, sm: 4 },
+            includePath: !!values.isFolder && { type: 'boolean', label: "Include path in link", defaultValue: true, sm: 4 },
             creation: { $hideUnder: 900, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $mergeRender: { by: {} },
                 type: (!values || values.creation) && 'date_time', }, // no type to show placeholder (values is false for table, not form)
             by: { $hideUnder: true, disabled: true, placeholder: "unknown", xs: 6, sm: 4, $render: ({ value }) => value && ("by " + value) },
